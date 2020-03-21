@@ -11,17 +11,17 @@ extern "C" {
 int main(int argc, char* argv[])
 {
     int portNb=0;
-    int motorHandles[7];
+    int simMotorHandles[7];
     if (argc>=9)
     { // We get the port and the motor handles (for the visual feedback, not for IK!) via command-line arguments
         portNb=atoi(argv[1]);
-        motorHandles[0]=atoi(argv[2]);
-        motorHandles[1]=atoi(argv[3]);
-        motorHandles[2]=atoi(argv[4]);
-        motorHandles[3]=atoi(argv[5]);
-        motorHandles[4]=atoi(argv[6]);
-        motorHandles[5]=atoi(argv[7]);
-        motorHandles[6]=atoi(argv[8]);
+        simMotorHandles[0]=atoi(argv[2]);
+        simMotorHandles[1]=atoi(argv[3]);
+        simMotorHandles[2]=atoi(argv[4]);
+        simMotorHandles[3]=atoi(argv[5]);
+        simMotorHandles[4]=atoi(argv[6]);
+        simMotorHandles[5]=atoi(argv[7]);
+        simMotorHandles[6]=atoi(argv[8]);
     }
     else
     {
@@ -52,9 +52,9 @@ int main(int argc, char* argv[])
         return 0;
     }
 
-    // Initialize the embedded robot model:
-    ikLaunch();
-    ikStart(data,dataLength);
+    // Initialize the robot model:
+    ikCreateEnvironment();
+    ikLoad(data,dataLength);
 
     // Connect to CoppeliaSim at the above specified port, via the remote API. CoppeliaSim is just used for visual feed-back, not IK calculation!
     int clientID=simxStart("127.0.0.1",portNb,true,true,2000,5);
@@ -65,48 +65,49 @@ int main(int argc, char* argv[])
 
 //      simxSynchronous(clientID,1); // We enable the synchronous mode, so that we can trigger each simulation step from here
 
-        int embeddedIkGroupHandle=ikGetIkGroupHandle("LBR_iiwa_7_R800");
-        int embeddedModelMotorHandles[7];
-        embeddedModelMotorHandles[0]=ikGetObjectHandle("LBR_iiwa_7_R800_joint1");
-        embeddedModelMotorHandles[1]=ikGetObjectHandle("LBR_iiwa_7_R800_joint2");
-        embeddedModelMotorHandles[2]=ikGetObjectHandle("LBR_iiwa_7_R800_joint3");
-        embeddedModelMotorHandles[3]=ikGetObjectHandle("LBR_iiwa_7_R800_joint4");
-        embeddedModelMotorHandles[4]=ikGetObjectHandle("LBR_iiwa_7_R800_joint5");
-        embeddedModelMotorHandles[5]=ikGetObjectHandle("LBR_iiwa_7_R800_joint6");
-        embeddedModelMotorHandles[6]=ikGetObjectHandle("LBR_iiwa_7_R800_joint7");
-        int embeddedModelTargetHandle=ikGetObjectHandle("LBR_iiwa_7_R800_target");
-        int embeddedModelBaseHandle=ikGetObjectHandle("LBR_iiwa_7_R800");
+        int ikGroupHandle;
+        ikGetIkGroupHandle("LBR_iiwa_7_R800",&ikGroupHandle);
+        int motorHandles[7];
+        ikGetObjectHandle("LBR_iiwa_7_R800_joint1",motorHandles+0);
+        ikGetObjectHandle("LBR_iiwa_7_R800_joint2",motorHandles+1);
+        ikGetObjectHandle("LBR_iiwa_7_R800_joint3",motorHandles+2);
+        ikGetObjectHandle("LBR_iiwa_7_R800_joint4",motorHandles+3);
+        ikGetObjectHandle("LBR_iiwa_7_R800_joint5",motorHandles+4);
+        ikGetObjectHandle("LBR_iiwa_7_R800_joint6",motorHandles+5);
+        ikGetObjectHandle("LBR_iiwa_7_R800_joint7",motorHandles+6);
+        int targetHandle;
+        ikGetObjectHandle("LBR_iiwa_7_R800_target",&targetHandle);
+        int baseHandle;
+        ikGetObjectHandle("LBR_iiwa_7_R800",&baseHandle);
 
         simReal v=0.0;
 
-        // Get the initial target dummy matrix, of the embedded model, and change it a bit:
-        simReal matrix[12];
-        ikGetObjectMatrix(embeddedModelTargetHandle,embeddedModelBaseHandle,matrix);
-        matrix[3]+=simReal(0.2);
-        matrix[7]+=simReal(0.3);
-        matrix[11]-=simReal(0.2);
-        ikSetObjectMatrix(embeddedModelTargetHandle,embeddedModelBaseHandle,matrix);
+        // Get the initial target dummy transformation, of the embedded model, and change it a bit:
+        C7Vector transf;
+        ikGetObjectTransformation(targetHandle,baseHandle,&transf);
+        transf.X+=C3Vector(simReal(0.2),simReal(0.3),-simReal(0.2));
+        ikSetObjectTransformation(targetHandle,baseHandle,&transf);
 
         while (simxGetConnectionId(clientID)!=-1)
         {
             // find a config for the given end-effector pose:
             simReal config[7];
-            ikGetConfigForTipPose(embeddedIkGroupHandle,7,embeddedModelMotorHandles,(simReal)0.4,1000,config,nullptr,nullptr,nullptr);
+            ikGetConfigForTipPose(ikGroupHandle,7,motorHandles,(simReal)0.4,1000,config,nullptr,nullptr,nullptr);
 
             // Read the corresponding motor angles and send them to CoppeliaSim:
             simxPauseCommunication(clientID,1); // Temporarily pause the remote API communication, in order to send all following commands at once
-            simxSetJointPosition(clientID,motorHandles[0],(float)config[0],simx_opmode_oneshot);
-            simxSetJointPosition(clientID,motorHandles[1],(float)config[1],simx_opmode_oneshot);
-            simxSetJointPosition(clientID,motorHandles[2],(float)config[2],simx_opmode_oneshot);
-            simxSetJointPosition(clientID,motorHandles[3],(float)config[3],simx_opmode_oneshot);
-            simxSetJointPosition(clientID,motorHandles[4],(float)config[4],simx_opmode_oneshot);
-            simxSetJointPosition(clientID,motorHandles[5],(float)config[5],simx_opmode_oneshot);
-            simxSetJointPosition(clientID,motorHandles[6],(float)config[6],simx_opmode_oneshot);
+            simxSetJointPosition(clientID,simMotorHandles[0],(float)config[0],simx_opmode_oneshot);
+            simxSetJointPosition(clientID,simMotorHandles[1],(float)config[1],simx_opmode_oneshot);
+            simxSetJointPosition(clientID,simMotorHandles[2],(float)config[2],simx_opmode_oneshot);
+            simxSetJointPosition(clientID,simMotorHandles[3],(float)config[3],simx_opmode_oneshot);
+            simxSetJointPosition(clientID,simMotorHandles[4],(float)config[4],simx_opmode_oneshot);
+            simxSetJointPosition(clientID,simMotorHandles[5],(float)config[5],simx_opmode_oneshot);
+            simxSetJointPosition(clientID,simMotorHandles[6],(float)config[6],simx_opmode_oneshot);
             simxPauseCommunication(clientID,0); // Unpause the remote API communication
 
             printf(".");
         }
-        ikShutDown(); // End the external IK
+        ikEraseEnvironment(); // Erase the IK environment
         simxFinish(clientID); // End the remote API
     }
     return(0);
